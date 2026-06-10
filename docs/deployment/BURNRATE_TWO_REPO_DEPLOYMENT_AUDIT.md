@@ -394,26 +394,20 @@ Still misleading in one important way:
 
 - says "pending migrations" but applies all server-side SQL files and continues after errors
 
-## Verified Current Connection Details
+## Connection Details (not stored here)
 
-From `.vscode/sftp.json`:
-
-- host: `server06.hostwhitelabel.com`
-- port: `27493`
-- username: `realfey`
-- remote path: `/home/realfey/eve2`
-
-From `ssh-host-config.txt`:
-
-- `ftp.realfeygon.com`
-- port `27493`
-- key: `D:\Repos\RealFeygon\.vscode\rsa-key-20251219OpenSSH.ppk`
-
-Manual SSH command:
-
-```powershell
-ssh -F "D:\Repos\RealFeygon\ssh-host-config.txt" ftp.realfeygon.com
-```
+> **Redacted on purpose.** This `docs/` tree is served publicly by
+> `documentation.js` at realfeygon.com, so host/port/username/key path must not
+> live in it. The literal values live only in local, untracked config:
+>
+> - `.vscode/sftp.json` (SFTP host/port/user/remote path) — gitignored
+> - `ssh-host-config.txt` (SSH host alias + key path) — local only
+>
+> Manual SSH uses the host-config file:
+>
+> ```powershell
+> ssh -F "<path-to>/ssh-host-config.txt" <host-alias>
+> ```
 
 ## Recommended Operational Source of Truth
 
@@ -434,6 +428,39 @@ Until the older docs are rewritten, use this precedence order:
    - DirectAdmin stop/start requirement
 3. Rewrite `docs/deployment/CI_CD_SETUP.md` to match the current workflows instead of the older template
 4. Replace the migration script's "pending migrations" behavior or make it track applied migrations explicitly
+
+## Supply-Chain & CI Security
+
+The CI/CD pipeline is the attack surface, not just the delivery mechanism. The
+2026 attack wave (tj-actions, actions-cool/issues-helper, trivy-action, TanStack,
+CISA "Megalodon") targeted Actions workflows and package installs to harvest
+CI/CD secrets. Standing rules now enforced in these repos:
+
+1. **Pin third-party Actions to a commit SHA, never a tag.** A tag can be moved
+   to an imposter commit (the dominant technique); a SHA cannot. Both repos pin
+   `actions/checkout` to a SHA.
+2. **Least-privilege token.** Both workflows set `permissions: contents: read`.
+3. **No `npm install` / build scripts in a job that holds deploy secrets.**
+   RealFeygon's `npm install` step was removed: it ran arbitrary dependency
+   lifecycle scripts in the same job that loads `SSH_PRIVATE_KEY`. The built
+   `node_modules` was never deployed (excluded from rsync; DirectAdmin manages
+   server modules; no tests ran). See the `marked` note in §6 — CI install never
+   guaranteed the prod app had the dependency anyway.
+4. **`secure-installer` before adding any dependency**, and honor the 7-day
+   release-age rule (do not adopt a version published < 7 days ago). This is the
+   harness-enforced "no package managers willy nilly" rule.
+5. **No secrets/infra in `docs/`.** This `docs/` tree is *published publicly* by
+   `documentation.js` (the `/documentation` portal serves the `deployment`
+   category). So the control is **redaction, not exclusion** — host/port/user/key
+   paths live only in untracked local config (`.vscode/sftp.json`,
+   `ssh-host-config.txt`), never in a doc. (Excluding `docs/` from rsync would
+   break the live portal, so that is NOT done.)
+
+Open remediation items are tracked in
+`BurnRate-Private/docs/development/SECURITY-DEPENDENCY-REMEDIATION-PLAN.md`
+(the `npm audit fix` set, the `better-sqlite3` downgrade guard, and the
+unfixable `xlsx`/SheetJS decision). The install-time procedure lives in the
+`secure-installer` skill.
 
 ## Bottom Line
 

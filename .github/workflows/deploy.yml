@@ -6,6 +6,11 @@ on:
       - main  # Deploy on push to main branch
   workflow_dispatch:  # Allow manual trigger from GitHub UI
 
+# Least-privilege token: this workflow only reads the repo and deploys over
+# SSH. It never writes back to GitHub, so deny everything except checkout read.
+permissions:
+  contents: read
+
 jobs:
   deploy:
     name: Deploy to Production
@@ -13,17 +18,18 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          # Match the prod Node 18 (DirectAdmin) for CI validation consistency.
-          # When prod is moved to Node 24, bump this to 24 as well.
-          node-version: '18'
+        # Pinned to a commit SHA (not a mutable tag) so a compromised/moved
+        # tag cannot silently change what runs. SHA = actions/checkout v4.3.1.
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
-      - name: Install dependencies
-        run: npm install
+      # SECURITY: the previous "Setup Node.js" + "npm install" steps were
+      # removed. `npm install` runs arbitrary lifecycle scripts (preinstall/
+      # postinstall/prepare) for the entire dependency tree in the SAME job
+      # that later loads SSH_PRIVATE_KEY — a compromised dependency could
+      # exfiltrate the prod deploy key. The built node_modules was never used:
+      # it is excluded from the rsync, DirectAdmin manages node_modules on the
+      # server, and no test step runs here. Re-add only as a SECRET-FREE
+      # validate job (npm ci --ignore-scripts) if CI testing returns.
 
       - name: Fail on deployable symlinks
         shell: bash

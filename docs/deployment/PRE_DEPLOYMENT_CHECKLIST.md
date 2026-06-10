@@ -1,351 +1,102 @@
 ---
-title: "Pre-Deployment Checklist"
-version: v2.0.0
+title: "Pre-Deployment Checklist (HITL Gates)"
+version: v3.0.0
 created: 2024-12-24
-updated: 2025-12-29
+updated: 2026-06-09
 status: current
 category: deployment
-tags: [deployment, checklist, validation]
+tags: [deployment, checklist, hitl, two-repo, supply-chain]
 ---
 
-# ? Pre-Deployment Checklist
+# Pre-Deployment Checklist — Human-in-the-Loop Gates
 
-**Version:** v2.0.0  
-**Last Updated:** December 29, 2025  
-**Status:** ?? Current
+> **Mechanics live in [`BURNRATE_TWO_REPO_DEPLOYMENT_AUDIT.md`](./BURNRATE_TWO_REPO_DEPLOYMENT_AUDIT.md)
+> (the canonical source of truth).** This file is the *review layer*: what **you**
+> do and what **you** check at each gate. When the two disagree, the audit wins
+> on mechanics; update this file to match.
 
-## ?? **Table of Contents**
+## TL;DR
+Test locally → review every changed line → protect the `--delete` race (order +
+excludes) → migrate before restart → **do a real DirectAdmin Stop/Start** → verify
+on the live site. A green Action + `restart.txt` does **not** mean the site is
+serving fresh code.
 
-- [TL;DR](#tldr)
-- [Complete This Before Deploying](#-complete-this-before-deploying)
-- [GitHub Commit Steps](#-github-commit-steps)
-- [Production Deployment Steps](#-production-deployment-steps)
-- [Production Testing](#-production-testing)
-- [Rollback Plan](#-rollback-plan-if-needed)
-- [Success Criteria](#-success-criteria)
-- [Support Resources](#-support-resources)
-
----
-
-## ?? **TL;DR**
-
-**?? Before deploying, verify:**
-1. All routes work locally
-2. No secrets in Git
-3. Environment variables ready
-4. GitHub committed and pushed
-5. SFTP credentials ready
-6. Know rollback procedure
-
-**Process:** Test local ? secure code ? commit ? deploy ? test production
-
-**Time:** 30-45 minutes
+## Table of Contents
+- [Gate 1 — Local first](#gate-1--local-first)
+- [Gate 2 — Read the diff](#gate-2--read-the-diff)
+- [Gate 3 — CI/CD change?](#gate-3--cicd-change)
+- [Gate 4 — New deployable file? (the --delete trap)](#gate-4--new-deployable-file-the---delete-trap)
+- [Gate 5 — Migrations](#gate-5--migrations)
+- [Gate 6 — Commit on a branch](#gate-6--commit-on-a-branch)
+- [Gate 7 — Deploy via the script](#gate-7--deploy-via-the-script)
+- [Gate 8 — Watch the order](#gate-8--watch-the-order)
+- [Gate 9 — Migrate on the server](#gate-9--migrate-on-the-server)
+- [Gate 10 — Real restart + verify](#gate-10--real-restart--verify)
+- [Supply-chain rules](#supply-chain-rules-always)
+- [Rollback](#rollback)
 
 ---
 
-## ?? **Complete This Before Deploying**
+## Gate 1 — Local first
+Run the app locally; confirm the change works in the real UI.
+- [ ] **Your check:** Have I *seen* it work locally? If not, stop.
 
-**?? TL;DR:** Test locally, verify security, check code, validate file structure, prepare GitHub commit.
+## Gate 2 — Read the diff
+- [ ] **Your check:** Can I explain every changed line? Any secret/key/PII in the
+  code? Any scope creep? If a line is unclear, make it be explained — don't pass it.
 
-### **1. Local Testing** ??
-```powershell
-# Start the server
-.\start-local.ps1 3000
+## Gate 3 — CI/CD change?
+- [ ] **Your check:** Does this touch a workflow / `deploy.yml` / `deploy.sh`?
+  If yes → **explicit approval required** before it lands (standing rule).
 
-# Test ALL routes:
-```
-- [ ] http://localhost:3000/resume - Works
-- [ ] http://localhost:3000/eve2 - Works  
-- [ ] http://localhost:3000/illusion - Works with new layout
-  - [ ] Categories show `<strong>` tags (not `<h2>`)
-  - [ ] Arrow and category name on same line
-  - [ ] Spell details show: rank, range, target, duration, defense, heighten
-  - [ ] Tooltips work on hover
-  - [ ] All 74 spells display correctly
+## Gate 4 — New deployable file? (the `--delete` trap)
+RealFeygon deploys with `rsync --delete` and **wipes anything not in its repo**.
+- [ ] **Your check:** Did this add a BurnRate-Private file that ships to prod?
+  If yes, is it covered by RealFeygon's exclude list? If not, RealFeygon's deploy
+  deletes it → 404s. A new exclude is a CI change → back to Gate 3.
 
-### **2. Security Check** ??
+## Gate 5 — Migrations
+- [ ] **Your check:** New DB columns/tables? If yes, the migration must run on the
+  server **before** the restart (see Gate 9). Confirm the `.sql` exists.
 
-**?? TL;DR:** Verify .env, passwords, SSH keys not in git status.
+## Gate 6 — Commit on a branch
+- [ ] **Your check:** One logical change per commit? Message accurate? Never commit
+  straight to `main` on RealFeygon — merging to `main` *is* the deploy trigger.
 
-```powershell
-# Verify these are gitignored
-git status | Select-String -Pattern ".env|.local.js|.vscode|node_modules"
-# Should show: nothing to commit or only .gitignore changes
-```
+## Gate 7 — Deploy via the script
+Run `cd D:/Repos/BurnRate-Private && bash scripts/deploy.sh` (it enforces order,
+waits for both Actions, touches the restart marker).
+- [ ] **Your check:** Am I about to type `git push origin main` by hand? **Stop** —
+  use the script. Hand-pushing is what caused the race 404s.
 
-- [ ] `.env` is NOT in git status
-- [ ] `.env.production` is NOT in git status
-- [ ] `*.local.js` files are NOT in git status
-- [ ] `.vscode/` folder is NOT in git status
-- [ ] `node_modules/` is NOT in git status
+## Gate 8 — Watch the order
+- [ ] **Your check:** Did **RealFeygon's** Action finish *before* BurnRate-Private
+  deploys? RealFeygon last = it deletes the private overlay.
 
-### **3. Code Review** ??
+## Gate 9 — Migrate on the server
+If Gate 5 applied: `bash scripts/apply-prod-migrations.sh` (applies server SQL in
+order). Note: it continues on error, so a failure can hide — read its output.
+- [ ] **Your check:** Did the new columns land **before** the new code runs?
 
-**?? TL;DR:** Confirm all DB configs use process.env, no hardcoded passwords.
-
-```powershell
-# Should see process.env, not hardcoded passwords
-Get-Content dbcon.js | Select-String "process.env"
-Get-Content dbcon_illusion.js | Select-String "process.env"
-```
-
-- [ ] `dbcon.js` uses `process.env.DB_PASSWORD`
-- [ ] `dbcon_illusion.js` uses `process.env.DB_ILLUSION_PASSWORD`
-- [ ] No production passwords in code files
-
-### **4. File Structure** ??
-
-**?? TL;DR:** Check partials have .handlebars extension, no duplicates.
-
-```powershell
-Get-ChildItem views\partials | Select-Object Name
-```
-
-Should show:
-- [ ] `category_block.handlebars` (not .hbs)
-- [ ] `spell_entry.handlebars` (not .hbs)
-- [ ] No duplicate `.hbs` files
-
-### **5. GitHub Preparation** ??
-
-**?? TL;DR:** Review changes with git status and git diff before committing.
-
-```powershell
-# Check what will be committed
-git status
-
-# Review changes
-git diff
-```
-
-- [ ] All new documentation files are staged
-- [ ] Updated view files are staged
-- [ ] `.env.example` is staged (template)
-- [ ] `.gitignore` is updated and staged
-- [ ] Setup scripts are staged
-
-### **6. Commit Message Ready** ??
-
-**?? TL;DR:** Use semantic commit format describing major changes, technical details, and security improvements.
-
-Use this commit message:
-```
-Complete local dev setup and fix illusion page
-
-Major changes:
-- Set up local development environment with MariaDB
-- Migrate database configs to environment variables
-- Fix illusion page: hierarchical partials, proper field display
-- Update category headers: h2 ? strong for better layout
-- Add comprehensive documentation and setup scripts
-
-Technical:
-- dbcon.js, dbcon_illusion.js use environment variables
-- category_block.handlebars spacing fixed
-- spell_entry.handlebars shows all fields
-- Added cache: false for development
-- Automated setup scripts for Windows
-
-Security:
-- Production passwords removed from code
-- Comprehensive .gitignore
-- Environment variable templates
-```
+## Gate 10 — Real restart + verify
+**`touch tmp/restart.txt` is NOT a reliable restart.** To actually serve fresh
+code/templates/DB state, **Stop then Start the Node app in DirectAdmin** — required
+after template/route changes, DB replacement, or migrations.
+- [ ] **Your check:** Did I do a real DirectAdmin Stop/Start?
+- [ ] **Your check:** Does the **live page** show the change? Any 404s on Nickerson
+  JS/CSS (the tell-tale of the race)?
 
 ---
 
-## ?? **GitHub Commit Steps**
+## Supply-chain rules (ALWAYS)
+The deploy pipeline is the attack surface. Non-negotiable:
+- Third-party GitHub Actions are **pinned to a commit SHA**, never a tag.
+- Workflow token is **least-privilege** (`permissions: contents: read`).
+- **No `npm install` / build scripts in any job that holds deploy secrets.**
+- Before adding ANY dependency: run the **secure-installer** skill; honor the
+  7-day release-age rule. See the supply-chain section of the audit.
 
-**?? TL;DR:** Stage all, verify, commit with message, push to main, verify on GitHub.
-
-```powershell
-# 1. Stage all changes
-git add .
-
-# 2. Verify
-git status
-
-# 3. Commit
-git commit -m "Complete local dev setup and fix illusion page"
-
-# 4. Push
-git push -u origin main
-```
-
-- [ ] Committed to Git
-- [ ] Pushed to GitHub
-- [ ] Verified on GitHub.com
-
----
-
-## ?? **Production Deployment Steps**
-
-**?? TL;DR:** Set DirectAdmin env vars, upload via SFTP (exclude node_modules/.env), SSH to server, npm install, restart app.
-
-### **Before Deploying:**
-
-- [ ] Reviewed **DEPLOYMENT_GUIDE.md**
-- [ ] Have SFTP credentials ready
-- [ ] Know DirectAdmin login
-- [ ] Have production database passwords ready
-
-### **Environment Variables Setup:**
-
-In DirectAdmin, set these:
-```
-DB_HOST=localhost
-DB_USER=realfey_realfey_realfeyuser
-DB_PASSWORD=[YOUR_PRODUCTION_DB_PASSWORD]
-DB_NAME=realfey_realfey_eve2_project
-
-DB_ILLUSION_HOST=localhost
-DB_ILLUSION_USER=realfey_illusion_spells_DB
-DB_ILLUSION_PASSWORD=[YOUR_PRODUCTION_DB_PASSWORD]
-DB_ILLUSION_NAME=realfey_illusion_spells_DB
-
-SESSION_SECRET=[YOUR_PRODUCTION_SESSION_SECRET]
-NODE_ENV=production
-PORT=80
-```
-
-- [ ] Environment variables documented
-- [ ] Ready to set in DirectAdmin
-
-### **SFTP Upload:**
-
-**Connection:**
-```
-Host: server06.hostwhitelabel.com
-Port: 27493
-Username: realfey
-Path: /home/realfey/eve2
-Key: .vscode/rsa-key-20251219OpenSSH.ppk
-```
-
-- [ ] VS Code SFTP extension installed
-- [ ] Or FileZilla/WinSCP ready
-- [ ] SSH key path confirmed
-
-### **Files to Upload:**
-
-- [ ] `main.js`
-- [ ] `dbcon.js`, `dbcon_illusion.js`
-- [ ] `illusion.js`, `eve2.js`, `resume.js`
-- [ ] `package.json`
-- [ ] `views/` directory (all templates)
-- [ ] `scripts/` directory
-- [ ] `public/` directory (static files)
-
-**DO NOT Upload:**
-- [ ] ? `node_modules/`
-- [ ] ? `.env` or `.env.production`
-- [ ] ? `*.local.js` files
-- [ ] ? `.vscode/` directory
-- [ ] ? Documentation files (optional)
-
-### **Post-Upload:**
-
-SSH into server:
-```bash
-ssh -i ".vscode\rsa-key-20251219OpenSSH.ppk" -p 27493 realfey@server06.hostwhitelabel.com
-```
-
-Then run:
-```bash
-cd /home/realfey/eve2
-npm install
-# Set environment variables in DirectAdmin
-# Restart Node.js app
-```
-
-- [ ] SSH connection tested
-- [ ] `npm install` completed
-- [ ] Environment variables set
-- [ ] App restarted
-
----
-
-## ?? **Production Testing**
-
-**?? TL;DR:** Test all routes, verify illusion page layout, check database connection, no console errors.
-
-Visit these URLs:
-- [ ] https://realfeygon.com/resume
-- [ ] https://realfeygon.com/eve2
-- [ ] https://realfeygon.com/illusion
-
-**Illusion Page Checks:**
-- [ ] Page loads without errors
-- [ ] 14 categories display
-- [ ] Category headers inline (arrow + name + count)
-- [ ] Expanding category shows spells
-- [ ] Spell details show all fields
-- [ ] Tooltips work on hover
-- [ ] No console errors
-- [ ] Database connects successfully
-
----
-
-## ?? **Rollback Plan (If Needed)**
-
-**?? TL;DR:** Revert git, check logs, fix common issues (env vars, DB creds, app restart, cache).
-
-If deployment fails:
-
-1. **Revert to previous version:**
-   ```bash
-   # SSH into server
-   cd /home/realfey/eve2
-   git pull origin main~1  # If using git on server
-   # Or restore from backup
-   ```
-
-2. **Check logs:**
-   ```bash
-   # Check Node.js logs in DirectAdmin
-   # Or
-   pm2 logs
-   ```
-
-3. **Common issues:**
-   - Environment variables not set ? Check DirectAdmin
-   - Database connection fails ? Verify DB credentials
-   - Templates not updating ? Restart Node.js app
-   - Old version showing ? Clear browser cache
-
----
-
-## ?? **Success Criteria**
-
-**?? TL;DR:** Deployment succeeds when all routes work, new layout shows, DB connects, no errors.
-
-Deployment is successful when:
-- ? All routes work without errors
-- ? Illusion page shows new layout
-- ? Database connections work
-- ? No 500 errors
-- ? No console errors
-- ? Production passwords secure
-
----
-
-## ?? **Support Resources**
-
-- **DEPLOYMENT_GUIDE.md** - Detailed deployment steps
-- **TROUBLESHOOTING.md** - Common issues
-- **DIRECTADMIN_ENV_SETUP.md** - Environment setup
-- **GITHUB_PREP.md** - Git workflow
-
----
-
-## ?? **Ready to Deploy?**
-
-Complete this checklist, then:
-
-1. ? **Commit to GitHub** (see GITHUB_PREP.md)
-2. ?? **Review deployment guide** (DEPLOYMENT_GUIDE.md)
-3. ?? **Deploy to production**
-4. ?? **Test production site**
-5. ?? **Celebrate!**
-
-**Good luck!** ??
+## Rollback
+If the live site is broken: identify the last-good commit, revert, redeploy via
+the script, and do a real DirectAdmin Stop/Start. Connection details are in
+`ssh-host-config.txt` (not duplicated here).
