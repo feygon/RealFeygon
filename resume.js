@@ -15,9 +15,9 @@ module.exports = (function() {
 		res.sendFile(path.join(__dirname, 'docs', 'AutisticWorkPreferences.htm'));
 	});
 
-	router.get('/DeceiversBlade/', function(req,res){
-		res.sendFile(__dirname + '/Sword of the Deceiver X.html');
-	});
+	// /resume/DeceiversBlade/ removed: it sendFile'd "Sword of the Deceiver X.html",
+	// which is not in the repo, so the route threw and returned 500 rather than 404.
+	// Not worth restoring — the Deceiver's Blade artifact is served by /illusion/.
 
     return router;
 })();
