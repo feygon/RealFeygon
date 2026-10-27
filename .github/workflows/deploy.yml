@@ -133,6 +133,7 @@ jobs:
             --exclude='dbcon_nickerson.js' \
             --exclude='dbcon_nickerson.local.js' \
             --exclude='scripts/NickersonCallbacks.js' \
+            --exclude='config/nickersonWikiReports.js' \
             --exclude='scripts/_*.js' \
             --exclude='scripts/constants.js' \
             --exclude='scripts/migrate.js' \

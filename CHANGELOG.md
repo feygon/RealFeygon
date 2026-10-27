@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security (2026-10-25)
+- **Deploy:** `deploy.yml` now excludes `config/nickersonWikiReports.js` from the
+  `rsync --delete`. Before this, a deploy that ran after the private overlay
+  deleted that file, and the private module failed to load.
+- **Docs:** `BURNRATE_TWO_REPO_DEPLOYMENT_AUDIT.md` gains a TL;DR, a contents
+  list, a Privacy Boundary section (the private repo's `docs/` never deploys,
+  because the server's `docs/` is public), and the rsync replay method used to
+  verify the exclude lists. Stale claims about `npm install` in CI and about the
+  superseded docs are corrected.
+- **Docs:** `PRE_DEPLOYMENT_CHECKLIST.md` v3.1.0 adds a privacy check and an
+  exclude-list re-test check to Gate 4.
+
 ### Planned
 - **MERN Migration** - Transition from Handlebars to React frontend
   - See `docs/learning/` for migration planning documentation

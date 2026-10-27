@@ -1,11 +1,11 @@
 ---
 title: "Pre-Deployment Checklist (HITL Gates)"
-version: v3.0.0
+version: v3.1.0
 created: 2024-12-24
-updated: 2026-06-09
+updated: 2026-10-25
 status: current
 category: deployment
-tags: [deployment, checklist, hitl, two-repo, supply-chain]
+tags: [deployment, checklist, hitl, two-repo, supply-chain, privacy]
 ---
 
 # Pre-Deployment Checklist — Human-in-the-Loop Gates
@@ -54,6 +54,12 @@ RealFeygon deploys with `rsync --delete` and **wipes anything not in its repo**.
 - [ ] **Your check:** Did this add a BurnRate-Private file that ships to prod?
   If yes, is it covered by RealFeygon's exclude list? If not, RealFeygon's deploy
   deletes it → 404s. A new exclude is a CI change → back to Gate 3.
+- [ ] **Your check (privacy):** Is any private content meant to reach the server?
+  It goes in `views/nickerson/` (login-protected, never served as static files),
+  **never** in `docs/`. The server's `docs/` is public at `/docs`, and
+  BurnRate-Private's `docs/` is excluded from deploy for that reason.
+- [ ] **Your check:** If either exclude list changed, was the rsync replay re-run?
+  See "How the exclude lists were verified" in the audit.
 
 ## Gate 5 — Migrations
 - [ ] **Your check:** New DB columns/tables? If yes, the migration must run on the

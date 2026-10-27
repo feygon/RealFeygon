@@ -1,8 +1,26 @@
 # BurnRate Two-Repo Deployment Audit
 
 **Status:** Verified against scripts, workflows, configs, symlinks, and recent deploy behavior  
-**Verified:** 2026-05-10
+**Verified:** 2026-10-25 (exclude lists and privacy boundary re-verified by rsync replay)
 **Scope:** Public BurnRate demo in `RealFeygon` and private Nickerson/BurnRate app in `BurnRate-Private`
+
+## TL;DR
+
+- Deploy with `bash scripts/deploy.sh` (in BurnRate-Private): RealFeygon first, BurnRate-Private second.
+- RealFeygon uses `rsync --delete`; every private file that ships must be covered by a RealFeygon exclude.
+- BurnRate-Private's `docs/` never deploys, because the server's `docs/` is public. Private runtime content goes in `views/nickerson/`.
+- A green Action plus `touch tmp/restart.txt` is not a restart. Do a DirectAdmin Stop/Start.
+
+## Contents
+
+- [Deployment Topology](#deployment-topology)
+- [Current Automation: What Actually Happens](#current-automation-what-actually-happens)
+- [Privacy Boundary: What May Ship to the Server](#privacy-boundary-what-may-ship-to-the-server)
+- [Fragile Parts](#fragile-parts)
+- [Pitfalls Introduced By Those Automations](#pitfalls-introduced-by-those-automations)
+- [Manual Steps That Still Matter](#manual-steps-that-still-matter)
+- [Supply-Chain & CI Security](#supply-chain--ci-security)
+- [Revision History](#revision-history)
 
 ## Purpose
 
@@ -56,22 +74,26 @@ If the order is reversed, the `RealFeygon` deploy can delete files that the priv
 Verified from `.github/workflows/deploy.yml`:
 
 1. Runs on push to `main`
-2. Checks out code on `ubuntu-latest`
-3. Runs `npm install` in CI
+2. Checks out code on `ubuntu-latest` (`actions/checkout` pinned to a commit SHA)
+3. Fails the run if a tracked symlink sits in a deployable (non-excluded) path
 4. Sets up SSH keys in the runner
 5. Cleans stale server-side `node_modules.backup-*` directories
 6. Deploys via `rsync -avz --delete`
 7. Removes any `.env` file on the server
 8. Touches `tmp/restart.txt`
 
-Important exclusions in the public deploy:
+There is no `npm install` step (removed 2026-06-10; see the supply-chain section).
+
+Important exclusions in the public deploy. An excluded path is also **protected
+from `--delete`**, which is how the private overlay survives a RealFeygon deploy:
 
 - `data`
-- `views/nickerson`
+- `views/nickerson` (includes the private wiki content in `views/nickerson/reports/`)
 - `views/layouts/nickerson.handlebars`
 - `dbcon_nickerson.js`
 - `Nickerson.js`
 - `scripts/NickersonCallbacks.js`
+- `config/nickersonWikiReports.js` (added 2026-10-25; `Nickerson.js` requires it at load)
 - many Nickerson/private JS/CSS files
 - `package-lock.json`
 
@@ -90,6 +112,11 @@ Important exclusions in the private deploy:
 - `data`
 - `package.json`
 - `package-lock.json`
+- `/docs` — **privacy-critical**; see [Privacy Boundary](#privacy-boundary-what-may-ship-to-the-server)
+- `/CLAUDE.md`, `/.claude`, `/todo`, `/tasks`, `/coverage`, `/archive`, `/openspec`, `/tests` — dev-only
+
+The leading `/` anchors a pattern to the repo root, so `/docs` cannot match a
+same-named folder deeper in the tree.
 
 ### BurnRate-Private `scripts/deploy.sh`
 
@@ -103,6 +130,55 @@ Verified behavior:
 6. Waits for the latest `BurnRate-Private` GitHub Action to complete
 7. Attempts post-deploy SSH checks
 8. Touches `tmp/restart.txt`
+
+## Privacy Boundary: What May Ship to the Server
+
+**Rule: BurnRate-Private's `docs/` folder never deploys.**
+
+Why: `documentation.js` serves the server's entire `docs/` folder as static
+files at `/docs`, with no authentication, and lists root-level docs in the
+portal. Both repos deploy into the same server folder, so anything the private
+repo ships into `docs/` becomes public. Private files that share a name with a
+public file are worse: the private copy overwrites the public one, and the
+public BurnRate demo then renders it.
+
+Where private content belongs:
+
+| Kind of private content | Location in BurnRate-Private | Deployed? | Reachable how |
+|---|---|---|---|
+| Runtime wiki reports (`.md`, `.png`, tracker `.csv`) | `views/nickerson/reports/` | Yes | Only via the login-protected `/Nickerson/wiki` routes |
+| Planning notes, PRDs, reviews, research | `docs/` | **No** | Local only |
+| Task records, specs, coverage, agent config | `todo/`, `tasks/`, `openspec/`, `coverage/`, `.claude/` | No | Local only |
+
+`views/nickerson/` is the right home for private runtime content because:
+
+- RealFeygon already excludes it, so `--delete` never removes it
+- nothing serves it as static files
+- local dev reaches it through the existing `views/nickerson` symlink
+
+**Incident (found 2026-10-25):** before this rule, every correct-order deploy
+shipped about 90 private files into the public `docs/` tree, and the private
+wiki reports overwrote the public demo's same-named reports. The exposure lasted
+from each BurnRate-Private deploy until the next RealFeygon deploy removed the
+files. Files left on the server from earlier deploys under `.claude/`,
+`openspec/` and `tests/` are protected by RealFeygon's excludes, so they need a
+one-time manual removal. None of them are served over HTTP.
+
+### How the exclude lists were verified
+
+The fix was tested by replaying both deploys with real rsync (3.2.7, the
+version on `ubuntu-latest`) into an empty folder, using the `--exclude` flags
+parsed directly from each workflow file. Three orders were replayed: correct
+order, race (RealFeygon last), and recovery (BurnRate-Private re-run). For each,
+the replay asserts:
+
+1. every file under `docs/` is byte-identical to RealFeygon's own copy
+2. `config/nickersonWikiReports.js` is present
+3. `views/nickerson/reports/` holds all wiki reports
+4. no dev-only private folders are present
+
+The old workflows failed checks 1–4; the fixed workflows pass all of them in
+all three orders. Re-run this replay whenever either exclude list changes.
 
 ## Fragile Parts
 
@@ -228,15 +304,15 @@ The old script wording that implied a full DirectAdmin restart has also been rep
 
 Verified:
 
-- `RealFeygon` CI runs `npm install` in GitHub Actions
+- neither workflow runs `npm install` (RealFeygon's CI install was removed 2026-06-10)
 - production deploy does **not** run `npm install` on the server
 - `package-lock.json` is excluded from deploy
 - `BurnRate-Private` excludes both `package.json` and `package-lock.json`
 
 Implication:
 
-- adding a new runtime dependency to `RealFeygon` may still require a real server-side dependency refresh if DirectAdmin does not automatically reinstall packages
-- successful CI install does **not** guarantee the production Node app has the new dependency
+- adding a new runtime dependency to `RealFeygon` requires a real server-side dependency refresh if DirectAdmin does not automatically reinstall packages
+- a green Action says nothing about whether the production Node app has the new dependency
 
 This already caused a real issue with `marked`.
 
@@ -338,46 +414,10 @@ Fragility:
 - the script says "pending migrations" but applies all server-side SQL files in order
 - “continue on error” can hide real migration failures by treating already-applied migrations and broken migrations the same way
 
-## Existing Documentation: What Is Stale
+## Existing Documentation: Status
 
-### `docs/deployment/DEPLOYMENT_GUIDE.md`
-
-Mostly stale for BurnRate two-repo reality.
-
-Still describes:
-
-- manual SFTP upload as the primary method
-- generic single-repo app deployment
-- server-side `npm install` as the normal post-upload step
-
-Missing:
-
-- two-repo layering
-- `RealFeygon` first / `BurnRate-Private` second
-- `rsync --delete` race condition
-- DirectAdmin restart limitations
-- SQLite sidecar refresh caveat
-
-### `docs/deployment/PRE_DEPLOYMENT_CHECKLIST.md`
-
-Useful as a generic hygiene checklist, but stale for BurnRate deploy specifics.
-
-Missing:
-
-- two-repo order
-- shared symlink realities
-- post-deploy stale-state handling
-- distinction between `data/burnrate_v5.db` and `burnrate_data/burnrate_demo.db`
-
-### `docs/deployment/CI_CD_SETUP.md`
-
-Stale for the current live setup.
-
-Specific mismatches:
-
-- documents SSH host/port assumptions that do not reflect the current SFTP/SSH config
-- documents server-side install/restart assumptions more cleanly than the current DirectAdmin behavior actually provides
-- does not capture the hardened SSH options now in the live workflows
+- `DEPLOYMENT_GUIDE.md` and `CI_CD_SETUP.md` were reduced to pointers on 2026-06-09. Their old content was stale.
+- `PRE_DEPLOYMENT_CHECKLIST.md` was rewritten on 2026-06-09 as the human review gates, and updated on 2026-10-25 for the privacy boundary.
 
 ### `scripts/deploy.sh`
 
@@ -385,14 +425,13 @@ Operationally useful, but still limited:
 
 - assumes its final SSH verification is authoritative
 - touches `tmp/restart.txt` but cannot perform the manual DirectAdmin Stop/Start
+- waits on `gh run list --limit 1` five seconds after pushing; if GitHub has not registered the new run yet, it can read the previous run's result
 
 ### `scripts/apply-prod-migrations.sh`
 
-Closer to reality than the older docs because it explicitly warns that `restart.txt` does not restart Node.
+Its wording is now accurate: it says it applies all SQL files and does not track applied state. The behavior is still fragile:
 
-Still misleading in one important way:
-
-- says "pending migrations" but applies all server-side SQL files and continues after errors
+- it re-runs every server-side SQL file and continues after errors, so a real failure looks the same as an already-applied migration
 
 ## Connection Details (not stored here)
 
@@ -411,23 +450,19 @@ Still misleading in one important way:
 
 ## Recommended Operational Source of Truth
 
-Until the older docs are rewritten, use this precedence order:
+Use this precedence order:
 
 1. Current GitHub Actions workflow files
 2. Current `scripts/deploy.sh` and `scripts/apply-prod-migrations.sh`
 3. `ssh-host-config.txt` and `.vscode/sftp.json`
 4. This audit document
-5. Older deployment guides only as historical context
+5. `PRE_DEPLOYMENT_CHECKLIST.md` for the review gates
 
-## Immediate Documentation Follow-Ups Recommended
+## Open Follow-Ups
 
-1. Rewrite `docs/deployment/DEPLOYMENT_GUIDE.md` around the two-repo BurnRate architecture
-2. Rewrite `docs/deployment/PRE_DEPLOYMENT_CHECKLIST.md` to include:
-   - repo order
-   - DB refresh rules
-   - DirectAdmin stop/start requirement
-3. Rewrite `docs/deployment/CI_CD_SETUP.md` to match the current workflows instead of the older template
-4. Replace the migration script's "pending migrations" behavior or make it track applied migrations explicitly
+- Make the migration script track applied migrations instead of re-running everything.
+- Make `deploy.sh` wait for the run belonging to the pushed commit, not the latest run.
+- Shared files present in both repos (`views/helpers/helpers.js`, `config/wikiReports.js`, `views/partials/scenario-card.handlebars`) have drifted apart. BurnRate-Private's copy wins on the server after a correct-order deploy; RealFeygon's copy wins after a race.
 
 ## Supply-Chain & CI Security
 
@@ -484,3 +519,9 @@ The most dangerous misconception is this:
 > A successful GitHub Action plus `touch tmp/restart.txt` does not guarantee the live Node process is actually serving the newly deployed templates or DB files.
 
 That gap is the source of many of the “deployment hell” symptoms observed in this project.
+
+## Revision History
+
+- **2026-10-25** — Added the Privacy Boundary section and the rsync replay method. Updated both exclude lists (BurnRate-Private now excludes `/docs` and dev-only folders; RealFeygon now excludes `config/nickersonWikiReports.js`). Corrected stale claims about `npm install` in CI and about the superseded docs.
+- **2026-06-09/10** — Supply-chain hardening; superseded docs reduced to pointers.
+- **2026-05-10** — First verified audit.
