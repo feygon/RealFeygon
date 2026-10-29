@@ -1,0 +1,8 @@
+{
+  "_comment": "Files shared byte-for-byte with RealFeygon. Source of truth: BurnRate-Private. SHA-256 is over the file with CRLF normalized to LF. Checked by tests in both repos and by scripts/deploy.sh. When a shared file changes: edit it here, copy it to RealFeygon, update its hash, then copy this manifest too.",
+  "files": {
+    "scripts/deterministic-math.js": "e7fe958c0298aa705455df811df31921e589ecc6e7c831d932af433b756442bf",
+    "scripts/sqlite-database.js": "419ad183c6e8c2a6d4f7aa58d6e8be5a537ad3313dff4745073c3783f49dace2",
+    "scripts/sqlite-sidecar-cleanup.js": "5fe5604426f1643fdaa762ab1d24e7aab3869f074311d37eb1e28973e9883d1f"
+  }
+}

@@ -16,6 +16,8 @@
  * @module _calculateMortgagePayments
  */
 
+const { pow } = require('./deterministic-math');
+
 /**
  * Calculate monthly P&I payment for fixed-rate mortgage
  *
@@ -40,7 +42,7 @@ function calculateMonthlyPIPayment(principal, annualRate, years) {
     const r = annualRate / 12;  // Monthly interest rate
 
     // Standard mortgage payment formula
-    const monthlyPayment = principal * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
+    const monthlyPayment = principal * (r * pow(1 + r, n)) / (pow(1 + r, n) - 1);
 
     return monthlyPayment;
 }

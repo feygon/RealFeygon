@@ -9,6 +9,7 @@
  */
 
 const { PROJECTION_CONSTANTS } = require('./constants');
+const { pow } = require('./deterministic-math');
 
 // IRS Uniform Lifetime Table factors (ages 73-90)
 const RMD_FACTORS = {
@@ -58,7 +59,7 @@ function calculateRMDFromAccounts(accounts, year, rateSet) {
         if (account.rmd_required) {
             const yearsElapsed = year - PROJECTION_CONSTANTS.baseYear;
             const growthRate = rateSet?.ira_growth_rate || 0.04;
-            const estimatedBalance = account.balance * Math.pow(1 + growthRate, yearsElapsed);
+            const estimatedBalance = account.balance * pow(1 + growthRate, yearsElapsed);
             totalRMD += estimatedBalance / factor;
         }
     });

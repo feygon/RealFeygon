@@ -9,6 +9,7 @@
  */
 
 const { PROJECTION_CONSTANTS } = require('./constants');
+const { pow } = require('./deterministic-math');
 
 /**
  * Calculate annual instrument payment (SMA or lump sum).
@@ -39,7 +40,7 @@ function calculateInstrumentPayment(instrument, year) {
     if (instrument.escalation_rate && instrument.escalation_rate > 0) {
         const basePayment = instrument.monthly_payment || 0;
         const yearsElapsed = year - instStartYear;
-        const escalatedPayment = basePayment * Math.pow(1 + instrument.escalation_rate, yearsElapsed);
+        const escalatedPayment = basePayment * pow(1 + instrument.escalation_rate, yearsElapsed);
         let monthsInYear = 12;
         if (year === instStartYear && startDate) monthsInYear = 12 - startDate.getMonth();
         if (year === instEndYear && endDate) monthsInYear = Math.min(monthsInYear, endDate.getMonth() + 1);
@@ -70,7 +71,7 @@ function calculateLTCPayout(policy, triggerYear, year) {
 
     const yearsToTrigger = triggerYear - PROJECTION_CONSTANTS.baseYear;
     const inflationRate = policy.pool_inflation_rate || 0.05;
-    const poolAtTrigger = policy.current_pool * Math.pow(1 + inflationRate, yearsToTrigger);
+    const poolAtTrigger = policy.current_pool * pow(1 + inflationRate, yearsToTrigger);
     const dailyBenefit = poolAtTrigger / (policy.payout_days || 1460);
     return dailyBenefit * 365;
 }
@@ -126,7 +127,7 @@ function calculateYearIncome(params) {
         // dollars and COLA begins applying immediately in 2027.
         const baseYear = ssIncome.start_year != null ? ssIncome.start_year : 2026;
         const yearsFromStart = Math.max(0, year - baseYear);
-        ssdAmount = baseAmount * Math.pow(1 + colaRate, yearsFromStart);
+        ssdAmount = baseAmount * pow(1 + colaRate, yearsFromStart);
         income.ssdi = ssdAmount;
     }
 
@@ -198,7 +199,7 @@ function calculateYearIncome(params) {
         const rentalIncreaseStartYear = 2028;
         const yearsOfIncrease = Math.max(0, year - rentalIncreaseStartYear + 1);
         annualRentalIncome = yearsOfIncrease > 0
-            ? baseAnnualRental * Math.pow(1 + rentalIncreaseRate, yearsOfIncrease)
+            ? baseAnnualRental * pow(1 + rentalIncreaseRate, yearsOfIncrease)
             : baseAnnualRental;
         income.rental = annualRentalIncome;
         yearData.rental_increase_years = yearsOfIncrease;

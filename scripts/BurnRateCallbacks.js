@@ -8,6 +8,7 @@
 const _calculateMedicalDeduction = require('./_calculateMedicalDeduction');
 const _calculateSSDITaxability = require('./_calculateSSDITaxability');
 const { PROJECTION_CONSTANTS, TAX_CONSTANTS } = require('./constants');
+const { pow } = require('./deterministic-math');
 
 module.exports = {
 
@@ -214,7 +215,7 @@ module.exports = {
         const inflationRate = expense.inflation_rate || 0;
         const yearsElapsed = year - startYear;
 
-        return baseAmount * Math.pow(1 + inflationRate, yearsElapsed);
+        return baseAmount * pow(1 + inflationRate, yearsElapsed);
     },
 
     /**
@@ -481,7 +482,7 @@ module.exports = {
 
         // Inflate from base year, not start year
         const yearsFromBase = year - baseYear;
-        return baseCost * Math.pow(1 + inflationRate, yearsFromBase);
+        return baseCost * pow(1 + inflationRate, yearsFromBase);
     },
 
     // _calculateMetrics: extracted to _calculateMetrics.js (Step 10)

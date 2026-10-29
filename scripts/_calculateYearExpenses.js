@@ -10,6 +10,7 @@
 
 const { calculateMortgagePayments } = require('./_calculateMortgagePayments');
 const { PROJECTION_CONSTANTS } = require('./constants');
+const { pow } = require('./deterministic-math');
 
 /**
  * Calculate expense for a given year with inflation.
@@ -25,7 +26,7 @@ function calculateExpense(expense, year, startYear) {
     const baseAmount = expense.annual_amount || 0;
     const inflationRate = expense.inflation_rate || 0;
     const yearsElapsed = year - startYear;
-    return baseAmount * Math.pow(1 + inflationRate, yearsElapsed);
+    return baseAmount * pow(1 + inflationRate, yearsElapsed);
 }
 
 /**
@@ -47,7 +48,7 @@ function calculateMemoryCare(scenario, year, rateSet, startYear) {
     if (!startYear || year < startYear) return 0;
 
     const yearsFromBase = year - baseYear;
-    return baseCost * Math.pow(1 + inflationRate, yearsFromBase);
+    return baseCost * pow(1 + inflationRate, yearsFromBase);
 }
 
 /**
@@ -166,7 +167,7 @@ function calculateYearExpenses(params) {
     // Condo maintenance (slider-controlled, skipped if condo sold)
     if (!condoSold) {
         const condoMaintenance = scenario.condo_maintenance || 2400;
-        const condoMaintenanceAmount = condoMaintenance * Math.pow(1.03, year - startYear);
+        const condoMaintenanceAmount = condoMaintenance * pow(1.03, year - startYear);
         yearDataExpenses.condo_maintenance = condoMaintenanceAmount;
         if (isMAPT) {
             maptPropertyExpenses += condoMaintenanceAmount;

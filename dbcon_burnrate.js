@@ -7,7 +7,7 @@ if (process.env.NODE_ENV !== 'production') {
     require('dotenv').config();
 }
 
-const Database = require('better-sqlite3');
+const Database = require('./scripts/sqlite-database');
 const path = require('path');
 const { cleanupStaleSqliteSidecars } = require('./scripts/sqlite-sidecar-cleanup');
 
@@ -21,6 +21,7 @@ const db = new Database(dbPath, {
     verbose: process.env.NODE_ENV !== 'production' ? console.log : null,
     fileMustExist: true
 });
+console.error('[sqlite] backend=' + Database.backend + ' db=burnrate');
 
 db.pragma('foreign_keys = ON');
 db.pragma('journal_mode = WAL');

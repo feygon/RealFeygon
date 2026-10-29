@@ -20,6 +20,7 @@ const { calculateBalanceUpdates } = require('./_calculateBalanceUpdates');
 const { taxEstimate, taxActual } = require('./_calculateTaxPass');
 const { optimizeWithdrawalDP } = require('./_optimizeWithdrawalDP');
 const { validateQ1Q2Funding } = require('./_validateQ1Q2Funding');
+const { pow } = require('./deterministic-math');
 
 /**
  * Load scenario configuration and all activated entities from the database.
@@ -178,13 +179,13 @@ function calculateYearCashflow(ctx, callbacks) {
 
     let lifestyleExpense = 0;
     if (inMemoryCare) {
-        lifestyleExpense = (mcMaintenanceAnnual + mcResidualAnnual) * Math.pow(1.05, year - startYear);
+        lifestyleExpense = (mcMaintenanceAnnual + mcResidualAnnual) * pow(1.05, year - startYear);
     } else if (ltcTriggeredForLifestyle && year >= intensifyYear) {
         const yearsSinceIntensify = year - intensifyYear;
         const reduction = Math.min(0.20, yearsSinceIntensify * 0.10);
-        lifestyleExpense = baseLifestyleFloor * Math.pow(1.05, year - startYear) * (1 - reduction);
+        lifestyleExpense = baseLifestyleFloor * pow(1.05, year - startYear) * (1 - reduction);
     } else {
-        lifestyleExpense = baseLifestyleFloor * Math.pow(1.05, year - startYear);
+        lifestyleExpense = baseLifestyleFloor * pow(1.05, year - startYear);
     }
     lifestyleExpense = Math.round(lifestyleExpense);
     yearData.expenses.lifestyle = lifestyleExpense;

@@ -18,6 +18,7 @@ const { calculateRMD, RMD_START_YEAR } = require('./_calculateRMD');
 const { PROJECTION_CONSTANTS, TAX_CONSTANTS } = require('./constants');
 const _calculateSSDITaxability = require('./_calculateSSDITaxability');
 const { precomputeSurvivalArray } = require('./_survivalProbability');
+const { pow } = require('./deterministic-math');
 
 /**
  * @typedef {Object} YearParams
@@ -161,7 +162,7 @@ function optimizeWithdrawalDP(yearParamsArray, startLtc, startIra, managedIraGro
     for (let t = nYears - 1; t >= 0; t--) {
         const yp = yearParamsArray[t];
         const survProb = survivalProbs[yp.year] || 0;
-        const discount = Math.pow(1 / (1 + cfg.discountRate), t);
+        const discount = pow(1 / (1 + cfg.discountRate), t);
 
         // Bracket harvesting ceiling for this year
         const wNeutral = wNeutralByYear[yp.year] || 0;
@@ -257,7 +258,7 @@ function optimizeWithdrawalDP(yearParamsArray, startLtc, startIra, managedIraGro
                     if (t + 2 < nYears - 1) {
                         const thisMagi = taxResult.magi;
                         const futureIrmaa = lookupIRMAA(thisMagi);
-                        const irmaaDiscount = Math.pow(1 / (1 + cfg.discountRate), t + 2);
+                        const irmaaDiscount = pow(1 / (1 + cfg.discountRate), t + 2);
                         // Weight deferred IRMAA by survival probability of the IRMAA year
                         const futureSurvProb = survivalProbs[yp.year + 2] || 0;
                         deferredIrmaa = futureIrmaa.surcharge * irmaaDiscount * futureSurvProb;

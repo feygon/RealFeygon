@@ -9,7 +9,7 @@ const os = require('os');
 const path = require('path');
 const express = require('express');
 const request = require('supertest');
-const Database = require('better-sqlite3');
+const Database = require('../../scripts/sqlite-database');
 
 describe('BurnRate Route Integration Tests', () => {
     let app;
